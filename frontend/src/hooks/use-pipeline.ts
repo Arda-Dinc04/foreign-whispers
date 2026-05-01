@@ -2,6 +2,7 @@
 
 import { useCallback, useReducer } from "react";
 import type {
+  DiarizeResponse,
   PipelineStage,
   PipelineState,
   StageState,
@@ -11,6 +12,7 @@ import type {
 } from "@/lib/types";
 import {
   downloadVideo,
+  diarizeVideo,
   transcribeVideo,
   translateVideo,
   synthesizeSpeech,
@@ -21,6 +23,7 @@ import { computeConfigEntries, type ConfigEntry } from "@/lib/config-id";
 const STAGES: PipelineStage[] = [
   "download",
   "transcribe",
+  "diarize",
   "translate",
   "tts",
   "stitch",
@@ -41,6 +44,12 @@ const INITIAL_STATE: PipelineState = {
 
 function makeVariantId(videoId: string, configId: string): string {
   return `${videoId}::${configId}`;
+}
+
+function isCachedDiarizationResult(stage: PipelineStage, result: unknown): result is DiarizeResponse {
+  if (stage !== "diarize" || typeof result !== "object" || result === null) return false;
+  const diarize = result as Partial<DiarizeResponse>;
+  return Boolean(diarize.skipped && ((diarize.speakers?.length ?? 0) > 0 || (diarize.segments?.length ?? 0) > 0));
 }
 
 type Action =
@@ -169,7 +178,7 @@ export function usePipeline() {
       try {
         const result = await fn();
         const skipped = typeof result === "object" && result !== null && "skipped" in result
-          ? (result as Record<string, unknown>).skipped === true
+          ? (result as Record<string, unknown>).skipped === true && !isCachedDiarizationResult(stage, result)
           : false;
         dispatch({
           type: "STAGE_COMPLETE",
@@ -192,6 +201,17 @@ export function usePipeline() {
     try {
       const dl = await run("download", () => downloadVideo(video.url));
       await run("transcribe", () => transcribeVideo(dl.video_id, settings.useYoutubeCaptions));
+      if (settings.diarization.length > 0) {
+        await run("diarize", () => diarizeVideo(dl.video_id));
+      } else {
+        dispatch({
+          type: "STAGE_COMPLETE",
+          stage: "diarize",
+          result: { video_id: dl.video_id, speakers: [], segments: [], skipped: true },
+          duration_ms: 0,
+          skipped: true,
+        });
+      }
       await run("translate", () => translateVideo(dl.video_id, "es"));
 
       // Run TTS + stitch for each config entry.

@@ -84,7 +84,11 @@ def test_text_file_to_speech_calls_alignment(tmp_path):
 
     called_with_stretch = []
 
-    def fake_synced(engine, text, target_sec, work_dir, stretch_factor=1.0):
+    def fake_synthesize(engine, text, wav_path, speaker_wav=None):
+        pathlib.Path(wav_path).write_bytes(b"RIFF" + b"\x00" * 100)
+        return pathlib.Path(wav_path).read_bytes()
+
+    def fake_postprocess(raw_bytes, target_sec, stretch_factor, alignment_enabled, work_dir):
         called_with_stretch.append(stretch_factor)
         from pydub import AudioSegment
         return AudioSegment.silent(duration=int(target_sec * 1000)), 1.0, target_sec
@@ -96,7 +100,8 @@ def test_text_file_to_speech_calls_alignment(tmp_path):
     mock_aligned_seg.action = AlignAction.MILD_STRETCH
 
     engine = MagicMock()
-    with patch("api.src.services.tts_engine._synced_segment_audio", side_effect=fake_synced), \
+    with patch("api.src.services.tts_engine._synthesize_raw", side_effect=fake_synthesize), \
+         patch("api.src.services.tts_engine._postprocess_segment", side_effect=fake_postprocess), \
          patch("api.src.services.tts_engine._build_alignment", return_value=([], {0: mock_aligned_seg})):
         text_file_to_speech(str(es_path), str(out_dir), tts_engine=engine)
 
@@ -121,13 +126,18 @@ def test_text_file_to_speech_missing_en_transcript(tmp_path):
 
     called_with_stretch = []
 
-    def fake_synced(engine, text, target_sec, work_dir, stretch_factor=1.0):
+    def fake_synthesize(engine, text, wav_path, speaker_wav=None):
+        pathlib.Path(wav_path).write_bytes(b"RIFF" + b"\x00" * 100)
+        return pathlib.Path(wav_path).read_bytes()
+
+    def fake_postprocess(raw_bytes, target_sec, stretch_factor, alignment_enabled, work_dir):
         called_with_stretch.append(stretch_factor)
         from pydub import AudioSegment
         return AudioSegment.silent(duration=int(target_sec * 1000)), 1.0, target_sec
 
     engine = MagicMock()
-    with patch("api.src.services.tts_engine._synced_segment_audio", side_effect=fake_synced):
+    with patch("api.src.services.tts_engine._synthesize_raw", side_effect=fake_synthesize), \
+         patch("api.src.services.tts_engine._postprocess_segment", side_effect=fake_postprocess):
         text_file_to_speech(str(es_path), str(out_dir), tts_engine=engine)
 
     # Synthesis ran even without EN transcript
@@ -201,3 +211,42 @@ def test_shorten_segment_text_fallback_on_exception():
         from api.src.services.tts_engine import _shorten_segment_text
         result = _shorten_segment_text("source", "target", 2.0)
         assert result == "target"
+
+
+def test_text_file_to_speech_passes_segment_voice_map(tmp_path):
+    from api.src.services.tts_engine import text_file_to_speech
+
+    es_dir = tmp_path / "translations" / "argos"
+    es_dir.mkdir(parents=True)
+    title = "voice_map"
+    (es_dir / f"{title}.json").write_text(json.dumps({
+        "segments": [
+            {"start": 0.0, "end": 1.0, "text": "Hola", "speaker": "SPEAKER_00"},
+        ],
+        "text": "Hola",
+    }))
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    seen = []
+
+    def fake_synthesize(engine, text, wav_path, speaker_wav=None):
+        seen.append(speaker_wav)
+        pathlib.Path(wav_path).write_bytes(b"RIFF" + b"\x00" * 100)
+        return pathlib.Path(wav_path).read_bytes()
+
+    engine = MagicMock()
+    def fake_postprocess(raw_bytes, target_sec, stretch_factor, alignment_enabled, work_dir):
+        from pydub import AudioSegment
+        return AudioSegment.silent(duration=int(target_sec * 1000)), 1.0, target_sec
+
+    with patch("api.src.services.tts_engine._synthesize_raw", side_effect=fake_synthesize), \
+         patch("api.src.services.tts_engine._postprocess_segment", side_effect=fake_postprocess):
+        text_file_to_speech(
+            str(es_dir / f"{title}.json"),
+            str(out_dir),
+            tts_engine=engine,
+            voice_map={"SPEAKER_00": "es/SPEAKER_00.wav"},
+        )
+
+    assert seen == ["es/SPEAKER_00.wav"]

@@ -1,5 +1,6 @@
 import type {
   DownloadResponse,
+  DiarizeResponse,
   TranscribeResponse,
   TranslateResponse,
   TTSResponse,
@@ -47,6 +48,12 @@ export async function translateVideo(
     `/api/translate/${videoId}?target_language=${targetLanguage}`,
     { method: "POST" }
   );
+}
+
+export async function diarizeVideo(videoId: string): Promise<DiarizeResponse> {
+  return fetchJson<DiarizeResponse>(`/api/diarize/${videoId}`, {
+    method: "POST",
+  });
 }
 
 export async function synthesizeSpeech(

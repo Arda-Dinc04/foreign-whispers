@@ -20,6 +20,8 @@ async def lifespan(app: FastAPI):
     """
     app.state._whisper_model = None
     app.state._tts_model = None
+    app.state.whisper_model = app.state._whisper_model
+    app.state.tts_model = app.state._tts_model
     logger.info("Application ready (models will load on first use).")
 
     # Configure Logfire if a write token is available
@@ -51,7 +53,10 @@ def get_whisper_model(app):
         logger.info("Loading Whisper model (%s)...", settings.whisper_model)
         import whisper
         app.state._whisper_model = whisper.load_model(settings.whisper_model)
+        app.state.whisper_model = app.state._whisper_model
         logger.info("Whisper model loaded.")
+    if getattr(app.state, "whisper_model", None) is not app.state._whisper_model:
+        app.state._whisper_model = app.state.whisper_model
     return app.state._whisper_model
 
 
@@ -61,7 +66,10 @@ def get_tts_model(app):
         logger.info("Loading TTS model (%s)...", settings.tts_model_name)
         from TTS.api import TTS
         app.state._tts_model = TTS(model_name=settings.tts_model_name, progress_bar=False)
+        app.state.tts_model = app.state._tts_model
         logger.info("TTS model loaded.")
+    if getattr(app.state, "tts_model", None) is not app.state._tts_model:
+        app.state._tts_model = app.state.tts_model
     return app.state._tts_model
 
 
@@ -83,12 +91,14 @@ def create_app() -> FastAPI:
 
     from api.src.routers.download import router as download_router
     from api.src.routers.transcribe import router as transcribe_router
+    from api.src.routers.diarize import router as diarize_router
     from api.src.routers.translate import router as translate_router
     from api.src.routers.tts import router as tts_router
     from api.src.routers.stitch import router as stitch_router
 
     app.include_router(download_router)
     app.include_router(transcribe_router)
+    app.include_router(diarize_router)
     app.include_router(translate_router)
     app.include_router(tts_router)
     app.include_router(stitch_router)

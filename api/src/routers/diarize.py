@@ -1,6 +1,7 @@
 """POST /api/diarize/{video_id} — speaker diarization (issue fw-lua)."""
 
 import asyncio
+import functools
 import json
 import subprocess
 
@@ -10,6 +11,7 @@ from api.src.core.config import settings
 from api.src.core.dependencies import resolve_title
 from api.src.schemas.diarize import DiarizeResponse
 from api.src.services.alignment_service import AlignmentService
+from foreign_whispers.diarization import assign_speakers
 
 router = APIRouter(prefix="/api")
 
@@ -43,25 +45,49 @@ async def diarize_endpoint(video_id: str):
             skipped=True,
         )
 
-    # ---- YOUR CODE HERE ----
-    # Step 1: Extract audio from video
-    #   video_path = settings.videos_dir / f"{title}.mp4"
-    #   audio_path = diar_dir / f"{title}.wav"
-    #   Use subprocess.run to call:
-    #     ffmpeg -i <video_path> -vn -acodec pcm_s16le -ar 16000 -y <audio_path>
-    #
-    # Step 2: Run diarization
-    #   diar_segments = _alignment_service.diarize(str(audio_path))
-    #
-    # Step 3: Extract unique speakers
-    #   speakers = sorted(set(s["speaker"] for s in diar_segments))
-    #
-    # Step 4: Cache result
-    #   result = {"speakers": speakers, "segments": diar_segments}
-    #   diar_path.write_text(json.dumps(result))
-    #
-    # Step 5: Return DiarizeResponse
-    #   return DiarizeResponse(video_id=video_id, speakers=speakers, segments=diar_segments)
-    #
-    raise HTTPException(status_code=501, detail="Diarization not yet implemented")
-    # ---- END YOUR CODE ----
+    video_path = settings.videos_dir / f"{title}.mp4"
+    if not video_path.exists():
+        raise HTTPException(status_code=404, detail=f"Video file not found for {video_id}")
+
+    audio_path = diar_dir / f"{title}.wav"
+    if not audio_path.exists():
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(video_path),
+            "-vn",
+            "-ac", "1",
+            "-acodec", "pcm_s16le",
+            "-ar", "16000",
+            str(audio_path),
+        ]
+        loop = asyncio.get_event_loop()
+        proc = await loop.run_in_executor(
+            None,
+            functools.partial(subprocess.run, cmd, capture_output=True, text=True),
+        )
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"ffmpeg audio extraction failed: {proc.stderr}")
+
+    loop = asyncio.get_event_loop()
+    diar_segments = await loop.run_in_executor(None, _alignment_service.diarize, str(audio_path))
+    speakers = sorted({s["speaker"] for s in diar_segments if s.get("speaker")})
+
+    _merge_speakers_into_transcription(title, diar_segments)
+
+    result = {"speakers": speakers, "segments": diar_segments}
+    diar_path.write_text(json.dumps(result, indent=2))
+
+    return DiarizeResponse(video_id=video_id, speakers=speakers, segments=diar_segments)
+
+
+def _merge_speakers_into_transcription(title: str, diar_segments: list[dict]) -> None:
+    if not diar_segments:
+        return
+
+    trans_path = settings.transcriptions_dir / f"{title}.json"
+    if not trans_path.exists():
+        return
+
+    transcript = json.loads(trans_path.read_text())
+    transcript["segments"] = assign_speakers(transcript.get("segments", []), diar_segments)
+    trans_path.write_text(json.dumps(transcript, indent=2))

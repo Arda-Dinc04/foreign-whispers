@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from api.src.core.config import settings
 from api.src.core.dependencies import resolve_title
 from api.src.services.tts_service import TTSService
+from foreign_whispers.voice_resolution import resolve_speaker_wav
 
 router = APIRouter(prefix="/api")
 
@@ -27,6 +28,7 @@ async def tts_endpoint(
     request: Request,
     config: str = Query(..., pattern=r"^c-[0-9a-f]{7}$"),
     alignment: bool = Query(False),
+    speaker_wav: str | None = Query(None, description="Reference voice WAV path, e.g. es/default.wav"),
 ):
     """Generate TTS audio for a translated transcript.
 
@@ -56,9 +58,20 @@ async def tts_endpoint(
         }
 
     source_path = str(trans_dir / f"{title}.json")
+    if not pathlib.Path(source_path).exists():
+        raise HTTPException(status_code=404, detail="Translated transcript not found")
+
+    translated = json.loads(pathlib.Path(source_path).read_text())
+    resolved_speaker_wav, voice_map = _resolve_voice_selection(translated, speaker_wav)
 
     await _run_in_threadpool(
-        None, svc.text_file_to_speech, source_path, str(audio_dir), alignment=alignment
+        None,
+        svc.text_file_to_speech,
+        source_path,
+        str(audio_dir),
+        alignment=alignment,
+        speaker_wav=resolved_speaker_wav,
+        voice_map=voice_map,
     )
 
     return {
@@ -83,3 +96,28 @@ async def get_audio(
         raise HTTPException(status_code=404, detail="Audio file not found")
 
     return FileResponse(str(audio_path), media_type="audio/wav")
+
+
+def _resolve_voice_selection(
+    translated: dict,
+    requested_speaker_wav: str | None,
+) -> tuple[str | None, dict[str, str] | None]:
+    if requested_speaker_wav:
+        return requested_speaker_wav, None
+
+    segments = translated.get("segments", [])
+    speakers = sorted({seg.get("speaker") for seg in segments if seg.get("speaker")})
+    if speakers:
+        voice_map: dict[str, str] = {}
+        for speaker in speakers:
+            try:
+                voice_map[speaker] = resolve_speaker_wav(settings.speakers_dir, "es", speaker)
+            except FileNotFoundError:
+                continue
+        if voice_map:
+            return None, voice_map
+
+    try:
+        return resolve_speaker_wav(settings.speakers_dir, "es"), None
+    except FileNotFoundError:
+        return None, None

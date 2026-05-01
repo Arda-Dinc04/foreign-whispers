@@ -298,3 +298,87 @@ def global_align(
         cumulative_drift += gap_shift
 
     return aligned
+
+
+def global_align_dp(
+    metrics: list[SegmentMetrics],
+    silence_regions: list[dict],
+    max_stretch: float = 1.4,
+    beam_width: int = 32,
+) -> list[AlignedSegment]:
+    """Beam-search global alignment that preserves the ``global_align`` output shape.
+
+    This scheduler explores a small set of choices per segment and keeps the
+    best partial timelines.  The score prioritizes fewer unresolved timing
+    failures, then less cumulative drift, fewer severe stretches, and finally
+    lower absolute drift from the original timeline.
+    """
+    if not metrics:
+        return []
+
+    def _silence_after(end_s: float) -> float:
+        for r in silence_regions:
+            if r.get("label") == "silence" and r["start_s"] >= end_s - 0.1:
+                return max(0.0, r["end_s"] - r["start_s"])
+        return 0.0
+
+    def _choices(m: SegmentMetrics) -> list[tuple[AlignAction, float, float]]:
+        gap = _silence_after(m.source_end)
+        choices: list[tuple[AlignAction, float, float]] = []
+
+        if m.predicted_stretch <= 1.1:
+            choices.append((AlignAction.ACCEPT, 0.0, 1.0))
+        if m.predicted_stretch <= max_stretch:
+            choices.append((AlignAction.MILD_STRETCH, 0.0, max(1.0, m.predicted_stretch)))
+        if m.predicted_stretch <= 1.8 and gap >= m.overflow_s:
+            choices.append((AlignAction.GAP_SHIFT, m.overflow_s, 1.0))
+
+        fallback = decide_action(m, available_gap_s=gap)
+        if fallback == AlignAction.GAP_SHIFT:
+            choices.append((fallback, m.overflow_s, 1.0))
+        elif fallback == AlignAction.MILD_STRETCH:
+            choices.append((fallback, 0.0, min(m.predicted_stretch, max_stretch)))
+        else:
+            choices.append((fallback, 0.0, 1.0))
+
+        unique: dict[tuple[AlignAction, float, float], tuple[AlignAction, float, float]] = {}
+        for action, gap_shift, stretch in choices:
+            unique[(action, round(gap_shift, 6), round(stretch, 6))] = (action, gap_shift, stretch)
+        return list(unique.values())
+
+    def _score(aligned: list[AlignedSegment]) -> tuple[float, float, float, float, float]:
+        unresolved = sum(a.action in {AlignAction.REQUEST_SHORTER, AlignAction.FAIL} for a in aligned)
+        failures = sum(a.action == AlignAction.FAIL for a in aligned)
+        severe = sum(a.stretch_factor > max_stretch for a in aligned)
+        drift = abs(aligned[-1].scheduled_end - aligned[-1].original_end) if aligned else 0.0
+        abs_drift = sum(abs(a.scheduled_start - a.original_start) for a in aligned)
+        return (unresolved, failures, drift, severe, abs_drift)
+
+    beams: list[tuple[list[AlignedSegment], float, float]] = [([], 0.0, 0.0)]
+
+    for m in metrics:
+        next_beams: list[tuple[list[AlignedSegment], float, float]] = []
+        for aligned, drift, prev_end in beams:
+            base_start = m.source_start + drift
+            for action, gap_shift, stretch in _choices(m):
+                scheduled_start = max(base_start, prev_end)
+                schedule_delay = scheduled_start - base_start
+                scheduled_end = scheduled_start + m.source_duration_s + gap_shift
+                new_drift = drift + schedule_delay + gap_shift
+                seg = AlignedSegment(
+                    index=m.index,
+                    original_start=m.source_start,
+                    original_end=m.source_end,
+                    scheduled_start=scheduled_start,
+                    scheduled_end=scheduled_end,
+                    text=m.translated_text,
+                    action=action,
+                    gap_shift_s=gap_shift,
+                    stretch_factor=stretch,
+                )
+                next_beams.append((aligned + [seg], new_drift, scheduled_end))
+
+        next_beams.sort(key=lambda state: _score(state[0]))
+        beams = next_beams[:beam_width]
+
+    return min(beams, key=lambda state: _score(state[0]))[0]

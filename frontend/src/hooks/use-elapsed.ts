@@ -7,17 +7,20 @@ import { useEffect, useState } from "react";
  * `startedAt` is truthy. Returns `undefined` when inactive.
  */
 export function useElapsed(startedAt: number | undefined): number | undefined {
-  const [elapsed, setElapsed] = useState<number | undefined>(undefined);
+  const [elapsed, setElapsed] = useState<number | undefined>(() =>
+    startedAt ? Date.now() - startedAt : undefined
+  );
 
   useEffect(() => {
-    if (!startedAt) {
-      setElapsed(undefined);
-      return;
-    }
-    setElapsed(Date.now() - startedAt);
-    const id = setInterval(() => setElapsed(Date.now() - startedAt), 1000);
-    return () => clearInterval(id);
+    if (!startedAt) return;
+    const update = () => setElapsed(Date.now() - startedAt);
+    const timeout = setTimeout(update, 0);
+    const interval = setInterval(update, 1000);
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
   }, [startedAt]);
 
-  return elapsed;
+  return startedAt ? elapsed : undefined;
 }

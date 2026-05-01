@@ -78,13 +78,59 @@ def download_caption(url, destination_folder, filename=None):
         print(f"Skipping captions (already exists): {title}")
         return str(save_path)
     print(f"Downloading captions for {title}... ", end=" ", flush=True)
-    api = YouTubeTranscriptApi()
-    caption = api.fetch(video_id).to_raw_data()
+    try:
+        api = YouTubeTranscriptApi()
+        caption = api.fetch(video_id).to_raw_data()
+    except Exception as exc:
+        print(f"youtube-transcript-api failed ({exc.__class__.__name__}); trying yt-dlp captions... ", end="", flush=True)
+        caption = _download_caption_with_ytdlp(url, pathlib.Path(destination_folder), safe_title)
     with open(save_path, 'w') as outfile:
         for segment in caption:
             outfile.write(json.dumps(segment) + "\n")
     print("Success!")
     return str(save_path)
+
+
+def _download_caption_with_ytdlp(url: str, destination_folder: pathlib.Path, safe_title: str) -> list[dict]:
+    """Download English captions with yt-dlp and return transcript-api-shaped segments."""
+    outtmpl = str(destination_folder / (safe_title + ".%(ext)s"))
+    ydl_opts = _yt_dlp_opts(
+        skip_download=True,
+        writesubtitles=True,
+        writeautomaticsub=True,
+        subtitleslangs=["en"],
+        subtitlesformat="json3",
+        outtmpl=outtmpl,
+    )
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+
+    candidates = sorted(destination_folder.glob(f"{safe_title}*.json3"))
+    if not candidates:
+        raise FileNotFoundError(f"yt-dlp did not produce English json3 captions for {url}")
+    return _json3_to_segments(candidates[0])
+
+
+def _json3_to_segments(path: pathlib.Path) -> list[dict]:
+    data = json.loads(path.read_text())
+    segments: list[dict] = []
+    for event in data.get("events", []):
+        if "segs" not in event:
+            continue
+        text = "".join(seg.get("utf8", "") for seg in event["segs"]).strip()
+        if not text:
+            continue
+        start = event.get("tStartMs", 0) / 1000
+        duration = event.get("dDurationMs", 0) / 1000
+        segments.append(
+            {
+                "start": start,
+                "duration": duration,
+                "end": start + duration,
+                "text": text,
+            }
+        )
+    return segments
 
 if __name__ == '__main__':
     vid_urls = ["https://www.youtube.com/watch?v=G3Eup4mfJdA&list=PLI1yx5Z0Lrv77D_g1tvF9u3FVqnrNbCRL&index=1",

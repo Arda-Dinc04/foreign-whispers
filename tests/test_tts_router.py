@@ -128,6 +128,60 @@ def test_tts_runs_in_threadpool(client, monkeypatch, ui_dir):
     assert executor_used["yes"], "TTS should run in a thread pool"
 
 
+def test_tts_passes_speaker_wav_query(client, monkeypatch, ui_dir):
+    src = ui_dir / "translations" / "argos" / "Test Title.json"
+    src.write_text(json.dumps(_translated_transcript()))
+
+    monkeypatch.setattr(
+        "api.src.routers.tts.resolve_title",
+        lambda video_id: "Test Title",
+    )
+
+    seen = {}
+
+    def fake_tts(source_path, output_path, tts_engine=None, alignment=False, speaker_wav=None):
+        seen["speaker_wav"] = speaker_wav
+        wav = pathlib.Path(output_path) / "Test Title.wav"
+        wav.write_bytes(b"RIFF" + b"\x00" * 100)
+
+    monkeypatch.setattr("api.src.services.tts_service.tts_text_file_to_speech", fake_tts)
+
+    resp = client.post("/api/tts/G3Eup4mfJdA?config=c-0000000&speaker_wav=es/default.wav")
+
+    assert resp.status_code == 200
+    assert seen["speaker_wav"] == "es/default.wav"
+
+
+def test_tts_builds_voice_map_from_speakers(client, monkeypatch, ui_dir):
+    transcript = _translated_transcript()
+    transcript["segments"][0]["speaker"] = "SPEAKER_00"
+    src = ui_dir / "translations" / "argos" / "Test Title.json"
+    src.write_text(json.dumps(transcript))
+
+    monkeypatch.setattr(
+        "api.src.routers.tts.resolve_title",
+        lambda video_id: "Test Title",
+    )
+    monkeypatch.setattr(
+        "api.src.routers.tts.resolve_speaker_wav",
+        lambda speakers_dir, lang, speaker_id=None: f"{lang}/{speaker_id or 'default'}.wav",
+    )
+
+    seen = {}
+
+    def fake_tts(source_path, output_path, tts_engine=None, alignment=False, voice_map=None):
+        seen["voice_map"] = voice_map
+        wav = pathlib.Path(output_path) / "Test Title.wav"
+        wav.write_bytes(b"RIFF" + b"\x00" * 100)
+
+    monkeypatch.setattr("api.src.services.tts_service.tts_text_file_to_speech", fake_tts)
+
+    resp = client.post("/api/tts/G3Eup4mfJdA?config=c-0000000")
+
+    assert resp.status_code == 200
+    assert seen["voice_map"] == {"SPEAKER_00": "es/SPEAKER_00.wav"}
+
+
 def test_tts_rejects_invalid_config(client, monkeypatch, ui_dir):
     """Config param must match ^c-[0-9a-f]{7}$ to prevent path traversal."""
     resp = client.post("/api/tts/G3Eup4mfJdA?config=../../etc")

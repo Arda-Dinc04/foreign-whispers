@@ -7,6 +7,8 @@ SegmentMetrics.  The translation re-ranking function is a **student assignment**
 
 import dataclasses
 import logging
+import math
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -157,10 +159,105 @@ def get_shorter_translations(
     Returns:
         Empty list (stub).  Implement to return ``TranslationCandidate`` items.
     """
-    logger.info(
-        "get_shorter_translations called for %.1fs budget (%d chars baseline) — "
-        "returning empty list (student assignment stub).",
-        target_duration_s,
-        len(baseline_es),
-    )
-    return []
+    budget = max(1, math.floor(target_duration_s * 15))
+    baseline = _clean_spacing(baseline_es)
+    if not baseline:
+        return []
+
+    candidates: dict[str, str] = {}
+
+    def add(text: str, rationale: str) -> None:
+        cleaned = _clean_spacing(text)
+        if cleaned and len(cleaned) < len(baseline):
+            candidates.setdefault(cleaned, rationale)
+
+    add(_apply_phrase_shortening(baseline), "contracted common Spanish phrases")
+    no_fillers = _remove_fillers(baseline)
+    add(no_fillers, "removed filler words")
+    add(_apply_phrase_shortening(no_fillers), "removed filler words and contracted phrases")
+    add(_remove_redundant_adverbs(no_fillers), "removed redundant adverbs")
+    add(_remove_parentheticals(no_fillers), "removed parenthetical aside")
+
+    # Last-resort concise candidate: trim trailing subordinate clauses.  This is
+    # intentionally conservative and only cuts at punctuation/conjunctions.
+    for splitter in [", que ", ", lo que ", " porque ", " ya que ", " mientras "]:
+        if splitter in no_fillers.lower():
+            idx = no_fillers.lower().find(splitter)
+            add(no_fillers[:idx], f"trimmed trailing clause after {splitter.strip()!r}")
+
+    ranked = [
+        TranslationCandidate(text=text, char_count=len(text), brevity_rationale=rationale)
+        for text, rationale in candidates.items()
+    ]
+    ranked.sort(key=lambda c: (len(c.text) > budget, abs(len(c.text) - budget), len(c.text), c.text.lower()))
+    return ranked
+
+
+_PHRASE_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("en este momento", "ahora"),
+    ("en estos momentos", "ahora"),
+    ("en el momento actual", "ahora"),
+    ("a continuación", "luego"),
+    ("con el fin de", "para"),
+    ("con la finalidad de", "para"),
+    ("debido a que", "porque"),
+    ("a causa de que", "porque"),
+    ("por lo tanto", "así que"),
+    ("sin embargo", "pero"),
+    ("de alguna manera", ""),
+    ("por supuesto", "claro"),
+    ("en realidad", ""),
+    ("básicamente", ""),
+    ("realmente", ""),
+    ("actualmente", "hoy"),
+    ("aproximadamente", "casi"),
+    ("alrededor de", "casi"),
+    ("un montón de", "muchos"),
+    ("una gran cantidad de", "muchos"),
+    ("cada uno de", "cada"),
+)
+
+_FILLER_WORDS = {
+    "bueno",
+    "pues",
+    "entonces",
+    "realmente",
+    "básicamente",
+    "simplemente",
+    "probablemente",
+    "posiblemente",
+    "claramente",
+}
+
+
+def _clean_spacing(text: str) -> str:
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+([,.!?;:])", r"\1", text)
+    text = re.sub(r"([¿¡])\s+", r"\1", text)
+    text = re.sub(r"\s*,\s*,+", ", ", text)
+    text = re.sub(r"^[,;:\s]+|[,;:\s]+$", "", text)
+    return text
+
+
+def _replace_case_insensitive(text: str, old: str, new: str) -> str:
+    return re.sub(rf"\b{re.escape(old)}\b", new, text, flags=re.IGNORECASE)
+
+
+def _apply_phrase_shortening(text: str) -> str:
+    result = text
+    for old, new in _PHRASE_REPLACEMENTS:
+        result = _replace_case_insensitive(result, old, new)
+    return _clean_spacing(result)
+
+
+def _remove_fillers(text: str) -> str:
+    pattern = r"\b(" + "|".join(re.escape(w) for w in sorted(_FILLER_WORDS)) + r")\b"
+    return _clean_spacing(re.sub(pattern, "", text, flags=re.IGNORECASE))
+
+
+def _remove_redundant_adverbs(text: str) -> str:
+    return _clean_spacing(re.sub(r"\b\w+mente\b", "", text, flags=re.IGNORECASE))
+
+
+def _remove_parentheticals(text: str) -> str:
+    return _clean_spacing(re.sub(r"\([^)]*\)", "", text))

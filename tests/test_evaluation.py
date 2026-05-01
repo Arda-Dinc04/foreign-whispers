@@ -14,13 +14,18 @@ def test_report_keys():
     metrics = compute_segment_metrics(en, es)
     aligned = global_align(metrics, silence_regions=[])
     report = clip_evaluation_report(metrics, aligned)
-    assert set(report.keys()) == {
+    assert {
         "mean_abs_duration_error_s",
         "pct_severe_stretch",
         "n_gap_shifts",
         "n_translation_retries",
         "total_cumulative_drift_s",
-    }
+        "n_overlaps",
+        "n_severe_stretch",
+        "action_counts",
+        "semantic_similarity",
+        "naturalness_score",
+    }.issubset(report.keys())
 
 
 def test_report_no_issues_for_easy_segment():

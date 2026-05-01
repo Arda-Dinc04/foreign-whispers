@@ -6,6 +6,7 @@ from foreign_whispers.alignment import (
     compute_segment_metrics,
     decide_action,
     global_align,
+    global_align_dp,
 )
 
 
@@ -149,3 +150,23 @@ def test_global_align_gap_shift_accumulates_drift():
     aligned = global_align(metrics, silence_regions=silence)
     assert aligned[0].action == AlignAction.GAP_SHIFT
     assert aligned[1].scheduled_start > aligned[1].original_start
+
+
+def test_global_align_dp_returns_non_overlapping_segments():
+    en = {"segments": [
+        {"start": 0.0, "end": 1.0, "text": "x"},
+        {"start": 0.5, "end": 1.5, "text": "x"},
+    ]}
+    es = {"segments": [
+        {"start": 0.0, "end": 1.0, "text": "ba"},
+        {"start": 0.5, "end": 1.5, "text": "ba"},
+    ]}
+    aligned = global_align_dp(compute_segment_metrics(en, es), silence_regions=[])
+    assert aligned[1].scheduled_start >= aligned[0].scheduled_end
+
+
+def test_global_align_dp_preserves_aligned_segment_shape():
+    m = _make_metrics(src_dur=3.0, tgt_chars=14)
+    aligned = global_align_dp([m], silence_regions=[])
+    assert isinstance(aligned[0], AlignedSegment)
+    assert aligned[0].index == m.index

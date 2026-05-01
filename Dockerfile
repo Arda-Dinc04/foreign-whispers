@@ -13,7 +13,7 @@ RUN apt-get update && \
     sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-7/policy.xml 2>/dev/null; true
 
 # Create non-root user
-RUN groupadd --gid $USER_GID $USERNAME \
+RUN if ! getent group $USER_GID >/dev/null; then groupadd --gid $USER_GID $USERNAME; fi \
     && useradd -s /bin/bash --uid $USER_UID --gid $USER_GID -m $USERNAME
 
 # Install uv
@@ -21,11 +21,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Install dependencies as root, then hand ownership to appuser
 WORKDIR /app
-COPY --chown=$USERNAME:$USERNAME pyproject.toml uv.lock ./
+COPY --chown=$USER_UID:$USER_GID pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project && \
-    chown -R $USERNAME:$USERNAME /app
+    chown -R $USER_UID:$USER_GID /app
 
-COPY --chown=$USERNAME:$USERNAME . .
+COPY --chown=$USER_UID:$USER_GID . .
 
 USER $USERNAME

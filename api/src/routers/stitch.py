@@ -225,6 +225,7 @@ async def stitch_endpoint(
     output_path = output_dir / f"{title}.mp4"
 
     if output_path.exists():
+        _write_dubbed_captions(title)
         return {"video_id": video_id, "video_path": str(output_path), "config": config}
 
     video_path = str(videos_dir / f"{title}.mp4")
@@ -242,7 +243,31 @@ async def stitch_endpoint(
         ),
     )
 
+    _write_dubbed_captions(title)
+
     return {"video_id": video_id, "video_path": str(output_path), "config": config}
+
+
+def _write_dubbed_captions(title: str) -> None:
+    json_path = settings.translations_dir / f"{title}.json"
+    if not json_path.exists():
+        return
+
+    vtt_dir = settings.dubbed_captions_dir
+    vtt_dir.mkdir(parents=True, exist_ok=True)
+    vtt_path = vtt_dir / f"{title}.vtt"
+    if vtt_path.exists():
+        return
+
+    data = json.loads(json_path.read_text())
+    segments = data.get("segments", [])
+    offset = _compute_speech_offset(title)
+    if offset > 0:
+        segments = [
+            {**seg, "start": seg["start"] + offset, "end": seg["end"] + offset}
+            for seg in segments
+        ]
+    vtt_path.write_text(_segments_to_vtt(segments))
 
 
 def _serve_video(file_path: pathlib.Path, request: Request):
@@ -300,7 +325,11 @@ async def get_video(
 
     video_path = settings.dubbed_videos_dir / config / f"{title}.mp4"
     if not video_path.exists():
-        raise HTTPException(status_code=404, detail="Dubbed video not yet generated")
+        legacy_path = settings.dubbed_videos_dir / f"{title}.mp4"
+        if legacy_path.exists():
+            video_path = legacy_path
+        else:
+            raise HTTPException(status_code=404, detail="Dubbed video not yet generated")
 
     return _serve_video(video_path, request)
 

@@ -75,6 +75,7 @@ def test_stitch_returns_video_path(client, monkeypatch, ui_dir):
     assert body["video_id"] == "G3Eup4mfJdA"
     assert body["video_path"].endswith(".mp4")
     assert body["config"] == "c-0000000"
+    assert (ui_dir / "dubbed_captions" / "Test Title.vtt").exists()
 
 
 def test_stitch_skips_if_cached(client, monkeypatch, ui_dir):
