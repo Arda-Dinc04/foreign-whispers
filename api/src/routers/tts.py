@@ -117,10 +117,7 @@ def _resolve_voice_selection(
         if voice_map:
             return None, voice_map
 
-    try:
-        return resolve_speaker_wav(settings.speakers_dir, "es"), None
-    except FileNotFoundError:
-        return None, None
+    return None, None
 
 
 def _repair_translation_speakers(title: str, translation_path: pathlib.Path) -> dict:
