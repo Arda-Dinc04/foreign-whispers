@@ -1,5 +1,6 @@
 """HTTP-agnostic service wrapping TTS engine functions."""
 
+import inspect
 import pathlib
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,7 @@ class TTSService:
             kwargs["speaker_wav"] = speaker_wav
         if voice_map is not None:
             kwargs["voice_map"] = voice_map
+        kwargs = _filter_supported_kwargs(tts_text_file_to_speech, kwargs)
         tts_text_file_to_speech(source_path, output_path, self.tts_engine, **kwargs)
 
     @staticmethod
@@ -58,3 +60,15 @@ class TTSService:
         from foreign_whispers.alignment import compute_segment_metrics, global_align
         metrics = compute_segment_metrics(en_transcript, es_transcript)
         return global_align(metrics, silence_regions, max_stretch)
+
+
+def _filter_supported_kwargs(fn: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Keep optional TTS kwargs compatible with injected backends and tests."""
+    signature = inspect.signature(fn)
+    if any(param.kind is inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()):
+        return kwargs
+    return {
+        key: value
+        for key, value in kwargs.items()
+        if key in signature.parameters
+    }
