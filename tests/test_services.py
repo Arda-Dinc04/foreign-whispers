@@ -172,7 +172,7 @@ class TestTranslationService:
             "text": "Hello world",
             "language": "en",
             "segments": [
-                {"id": 0, "start": 0.0, "end": 2.5, "text": "Hello world"},
+                {"id": 0, "start": 0.0, "end": 2.5, "text": "Hello world", "speaker": "SPEAKER_00"},
             ],
         }
 
@@ -182,6 +182,7 @@ class TestTranslationService:
 
         assert result["text"] == "HELLO WORLD"
         assert result["segments"][0]["text"] == "HELLO WORLD"
+        assert result["segments"][0]["speaker"] == "SPEAKER_00"
         assert result["language"] == "es"
         # Original should not be mutated
         assert transcript["text"] == "Hello world"

@@ -26,6 +26,7 @@ dependencies = [
     "setuptools<81",
     "pyyaml>=6.0.3",
     "logfire",
+    "pyannote.audio==3.4.0",
 ]
 
 [dependency-groups]
@@ -37,7 +38,7 @@ dev = [
 alignment = [
     "logfire",
     "silero-vad",
-    "pyannote.audio",
+    "pyannote.audio==3.4.0",
 ]
 
 [tool.uv]

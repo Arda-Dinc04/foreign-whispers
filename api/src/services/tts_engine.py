@@ -21,7 +21,7 @@ CHATTERBOX_SPEAKER_WAV = os.getenv("CHATTERBOX_SPEAKER_WAV", "")
 # Default is "on" (new clamped path). Useful for A/B comparisons.
 _ALIGNMENT_ENABLED = os.getenv("FW_ALIGNMENT", "on").lower() != "off"
 
-SPEED_MIN = 0.75
+SPEED_MIN = 0.90
 SPEED_MAX = 1.25
 # When TTS audio is less than this fraction of the target window, skip
 # time-stretching entirely — play at natural speed and pad with silence.

@@ -37,7 +37,7 @@ def test_synced_segment_stretch_factor_changes_speed(monkeypatch):
 
 
 def test_synced_segment_clamp_applied(monkeypatch):
-    """Speed factor is clamped to [0.85, 1.25] in alignment-enabled mode."""
+    """Speed factor is clamped to [0.90, 1.25] in alignment-enabled mode."""
     import api.src.services.tts_engine as tts
     monkeypatch.setattr(tts, "_ALIGNMENT_ENABLED", True)
     from api.src.services.tts_engine import _synced_segment_audio
@@ -58,7 +58,7 @@ def test_synced_segment_clamp_applied(monkeypatch):
         audio, sf_val, rd = _synced_segment_audio(engine, "test", target_sec=1.0, work_dir=tmpdir, stretch_factor=1.0)
         assert audio is not None
         assert sf_val <= 1.25 + 1e-9
-        assert sf_val >= 0.85 - 1e-9  # also within lower bound
+        assert sf_val >= 0.90 - 1e-9  # also within lower bound
 
 
 def test_text_file_to_speech_calls_alignment(tmp_path):

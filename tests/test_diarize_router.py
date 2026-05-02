@@ -64,9 +64,18 @@ def test_diarize_returns_cached_result(client, monkeypatch, tmp_path):
         "speakers": ["SPEAKER_00"],
         "segments": [{"start_s": 0.0, "end_s": 1.0, "speaker": "SPEAKER_00"}],
     }))
+    trans_dir = tmp_path / "transcriptions" / "whisper"
+    trans_dir.mkdir(parents=True)
+    trans_path = trans_dir / f"{title}.json"
+    trans_path.write_text(json.dumps({
+        "segments": [{"start": 0.0, "end": 1.0, "text": "hello"}],
+        "text": "hello",
+    }))
     monkeypatch.setattr("api.src.routers.diarize.resolve_title", lambda video_id: title)
 
     resp = client.post("/api/diarize/G3Eup4mfJdA")
 
     assert resp.status_code == 200
     assert resp.json()["skipped"] is True
+    merged = json.loads(trans_path.read_text())
+    assert merged["segments"][0]["speaker"] == "SPEAKER_00"

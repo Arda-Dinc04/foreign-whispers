@@ -33,6 +33,8 @@ async def translate_endpoint(
     # Skip if already translated
     if out_path.exists():
         data = json.loads(out_path.read_text())
+        src_path = raw_dir / f"{title}.json"
+        data = _repair_cached_segment_metadata(data, src_path, out_path)
         return {
             "video_id": video_id,
             "target_language": target_language,
@@ -54,3 +56,27 @@ async def translate_endpoint(
         "text": translated.get("text", ""),
         "segments": translated.get("segments", []),
     }
+
+
+def _repair_cached_segment_metadata(data: dict, src_path: pathlib.Path, out_path: pathlib.Path) -> dict:
+    """Backfill cached translations with source segment metadata like speaker labels."""
+    if not src_path.exists():
+        return data
+
+    source = json.loads(src_path.read_text())
+    source_segments = source.get("segments", [])
+    translated_segments = data.get("segments", [])
+    changed = False
+
+    for source_seg, translated_seg in zip(source_segments, translated_segments):
+        for key, value in source_seg.items():
+            if key == "text":
+                continue
+            if key not in translated_seg:
+                translated_seg[key] = value
+                changed = True
+
+    if changed:
+        out_path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+
+    return data

@@ -38,6 +38,7 @@ async def diarize_endpoint(video_id: str):
     # Return cached result
     if diar_path.exists():
         data = json.loads(diar_path.read_text())
+        _merge_speakers_into_transcription(title, data.get("segments", []))
         return DiarizeResponse(
             video_id=video_id,
             speakers=data.get("speakers", []),

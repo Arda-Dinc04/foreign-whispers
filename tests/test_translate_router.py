@@ -36,7 +36,7 @@ def _fake_transcript():
         "text": "Hello world",
         "language": "en",
         "segments": [
-            {"id": 0, "start": 0.0, "end": 2.5, "text": " Hello world"},
+            {"id": 0, "start": 0.0, "end": 2.5, "text": " Hello world", "speaker": "SPEAKER_00"},
         ],
     }
 
@@ -69,6 +69,7 @@ def test_translate_returns_translated_segments(client, monkeypatch, ui_dir):
     assert body["video_id"] == "G3Eup4mfJdA"
     assert body["target_language"] == "es"
     assert body["segments"][0]["text"] == " HELLO WORLD"
+    assert body["segments"][0]["speaker"] == "SPEAKER_00"
 
 
 def test_translate_persists_json(client, monkeypatch, ui_dir):
@@ -93,6 +94,7 @@ def test_translate_persists_json(client, monkeypatch, ui_dir):
     assert saved.exists()
     data = json.loads(saved.read_text())
     assert data["language"] == "es"
+    assert data["segments"][0]["speaker"] == "SPEAKER_00"
 
 
 def test_translate_skips_if_cached(client, monkeypatch, ui_dir):
@@ -106,6 +108,8 @@ def test_translate_skips_if_cached(client, monkeypatch, ui_dir):
     }
     cached = ui_dir / "translations" / "argos" / "Test Title.json"
     cached.write_text(json.dumps(cached_data))
+    src = ui_dir / "transcriptions" / "whisper" / "Test Title.json"
+    src.write_text(json.dumps(_fake_transcript()))
 
     translate_called = {"count": 0}
 
@@ -121,6 +125,8 @@ def test_translate_skips_if_cached(client, monkeypatch, ui_dir):
     resp = client.post("/api/translate/G3Eup4mfJdA?target_language=es")
     assert resp.status_code == 200
     assert translate_called["count"] == 0
+    assert resp.json()["segments"][0]["speaker"] == "SPEAKER_00"
+    assert json.loads(cached.read_text())["segments"][0]["speaker"] == "SPEAKER_00"
 
 
 def test_translate_source_not_found(client, monkeypatch, ui_dir):

@@ -96,6 +96,7 @@ class Settings(BaseSettings):
 
     # HuggingFace token for pyannote speaker diarization model
     hf_token: str = ""
+    diarization_chunk_s: int = 120
 
     # Logfire write token — set via FW_LOGFIRE_WRITE_TOKEN (or put in .env)
     logfire_write_token: str = ""
