@@ -23,7 +23,13 @@ Final artifact configuration: `c-abc1234`
 The generated media artifacts are intentionally not committed to Git because
 they are large MP4/WAV files. The final dubbed videos, burned-caption videos,
 sidecar VTT captions, and proof JSON artifacts are stored in the submitted
-Google Drive folder.
+Google Drive folder:
+
+```text
+https://drive.google.com/drive/folders/1QI-KmpJiXlapbkBbY8zQdSQ2x5mWWBy4?usp=sharing
+```
+
+Submission artifact folder: [Foreign Whispers final artifacts](https://drive.google.com/drive/folders/1QI-KmpJiXlapbkBbY8zQdSQ2x5mWWBy4?usp=sharing)
 
 Final generated videos:
 
@@ -44,6 +50,9 @@ pipeline_data/api/translations/argos/*.json
 pipeline_data/api/tts_audio/chatterbox/c-abc1234/*.wav
 pipeline_data/api/tts_audio/chatterbox/c-abc1234/*.align.json
 ```
+
+The externally submitted copies of these artifacts are available here:
+[Google Drive artifact folder](https://drive.google.com/drive/folders/1QI-KmpJiXlapbkBbY8zQdSQ2x5mWWBy4?usp=sharing).
 
 Validation checkpoint:
 
@@ -522,6 +531,10 @@ Fix:
 
 ## Validation
 
+The final generated MP4/VTT/JSON artifacts referenced in this section are
+available in the submitted Drive folder:
+[Foreign Whispers final artifacts](https://drive.google.com/drive/folders/1QI-KmpJiXlapbkBbY8zQdSQ2x5mWWBy4?usp=sharing).
+
 Targeted test command:
 
 ```bash
@@ -569,6 +582,11 @@ Strait of Hormuz: 0 high-CPS problem segments
 
 ## Final Artifact Checklist
 
+Drive folder containing submitted burned-caption MP4s, sidecar VTTs, and proof
+JSON artifacts:
+
+[Foreign Whispers final artifacts](https://drive.google.com/drive/folders/1QI-KmpJiXlapbkBbY8zQdSQ2x5mWWBy4?usp=sharing)
+
 Completed on the GPU machine:
 
 ```text
@@ -587,6 +605,16 @@ pipeline_data/api/transcriptions/whisper/*.json
 pipeline_data/api/diarizations/*.json
 pipeline_data/api/translations/argos/*.json
 ```
+
+Recommended grading order:
+
+1. Open the Drive folder:
+   [Foreign Whispers final artifacts](https://drive.google.com/drive/folders/1QI-KmpJiXlapbkBbY8zQdSQ2x5mWWBy4?usp=sharing)
+2. Review the burned-caption MP4s for direct playback with subtitles already
+   visible.
+3. Use the sidecar VTT files if subtitles need to be inspected separately.
+4. Use the Whisper, diarization, and translation JSON files as proof artifacts
+   for intermediate pipeline stages.
 
 ## Known Limitations
 
